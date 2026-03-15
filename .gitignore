@@ -1,0 +1,11 @@
+build/
+dist/
+*.log
+*.err
+__pycache__/
+.venv/
+.env
+.claude
+config.json
+*.tmp
+.DS_Store

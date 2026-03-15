@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.macblue.app</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>MACBLUE_PYTHON</string>
+    <string>MACBLUE_DIR/app.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>MACBLUE_DIR</string>
+
+  <!-- Start automatically when the user logs in -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Restart if it crashes -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Log output -->
+  <key>StandardOutPath</key>
+  <string>MACBLUE_DIR/macblue.log</string>
+  <key>StandardErrorPath</key>
+  <string>MACBLUE_DIR/macblue.err</string>
+
+  <!-- Need a GUI session for the menu bar -->
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+</dict>
+</plist>
