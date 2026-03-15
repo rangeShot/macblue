@@ -1,0 +1,73 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get version from setup.py
+        id: version
+        run: |
+          VERSION=$(python3 -c "
+          import re, sys
+          text = open('setup.py').read()
+          m = re.search(r'VERSION\s*=\s*[\"'']([^\"'']+)[\"'']', text)
+          print(m.group(1) if m else '')
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: check
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false' && steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v$VERSION"
+
+          # Generate changelog from commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            CHANGES=$(git log "$LAST_TAG"..HEAD --pretty=format:"- %s" --no-merges)
+          else
+            CHANGES=$(git log --pretty=format:"- %s" --no-merges -20)
+          fi
+
+          BODY="## What's new in v${VERSION}
+
+          ${CHANGES}
+
+          ## Install / Update
+
+          \`\`\`bash
+          # Fresh install
+          git clone https://github.com/${{ github.repository }}.git
+          cd macblue && bash install.sh
+
+          # Or update existing
+          cd /path/to/macblue && git pull && bash install.sh
+          \`\`\`"
+
+          gh release create "$TAG" \
+            --title "macblue v${VERSION}" \
+            --notes "$BODY" \
+            --target main

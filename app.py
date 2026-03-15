@@ -468,15 +468,58 @@ class MacBlueApp(rumps.App):
             )
             return
 
-        resp = rumps.alert(
-            title=f"Update available: v{update['version']}",
-            message=f"You have v{VERSION}.\n\n"
-                    f"Download v{update['version']} and run install.sh to update.",
-            ok="Download",
-            cancel="Later",
-        )
-        if resp == 1:  # clicked "Download"
-            subprocess.Popen(["open", update["url"]])
+        # Check if this is a git repo — if so, offer auto-update
+        is_git = (BASE_DIR / ".git").is_dir()
+
+        if is_git:
+            resp = rumps.alert(
+                title=f"Update available: v{update['version']}",
+                message=f"You have v{VERSION}.\n\n"
+                        f"This will pull the latest changes and reinstall.",
+                ok="Update Now",
+                cancel="Later",
+            )
+            if resp == 1:
+                self._notify("Updating macblue…")
+                threading.Thread(target=self._run_auto_update, daemon=True).start()
+        else:
+            resp = rumps.alert(
+                title=f"Update available: v{update['version']}",
+                message=f"You have v{VERSION}.\n\n"
+                        f"Download v{update['version']} and run install.sh to update.",
+                ok="Download",
+                cancel="Later",
+            )
+            if resp == 1:
+                subprocess.Popen(["open", update["url"]])
+
+    def _run_auto_update(self):
+        """Pull latest code and run install.sh in background."""
+        try:
+            log.info("Auto-update: pulling latest changes...")
+            r = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                cwd=str(BASE_DIR), capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode != 0:
+                log.error("git pull failed: %s", r.stderr.strip())
+                self._pending_update_result = (False, f"git pull failed:\n{r.stderr.strip()}")
+                return
+
+            log.info("Auto-update: running install.sh...")
+            r = subprocess.run(
+                ["bash", str(BASE_DIR / "install.sh")],
+                cwd=str(BASE_DIR), capture_output=True, text=True, timeout=300,
+            )
+            if r.returncode == 0:
+                log.info("Auto-update: success! App will restart.")
+                self._pending_update_result = (True, "Update complete! macblue will restart.")
+            else:
+                log.error("install.sh failed: %s", r.stderr.strip()[-200:])
+                self._pending_update_result = (False, "Install failed. Check logs.")
+        except Exception as e:
+            log.exception("Auto-update error: %s", e)
+            self._pending_update_result = (False, str(e))
 
     # ── Misc ──────────────────────────────────────────────────────────────────
 
