@@ -26,9 +26,15 @@ else
   echo "✓ blueutil installed."
 fi
 
-# ── 2. Python deps ──────────────────────────────────────────────────────────
+# ── 2. Python venv & deps ─────────────────────────────────────────────────
+VENV="$SCRIPT_DIR/.venv"
+if [[ ! -d "$VENV" ]]; then
+  echo "→ Creating virtual environment..."
+  python3 -m venv "$VENV"
+fi
+source "$VENV/bin/activate"
 echo "→ Installing Python dependencies..."
-pip3 install --quiet -r "$SCRIPT_DIR/requirements.txt"
+pip install --quiet -r "$SCRIPT_DIR/requirements.txt"
 
 # ── 3. Make scripts executable ──────────────────────────────────────────────
 chmod +x "$SCRIPT_DIR/scripts/connect.sh" "$SCRIPT_DIR/scripts/disconnect.sh"
