@@ -409,7 +409,7 @@ class MacBlueApp(rumps.App):
 
             log.info("Running %s", script.name)
             r = subprocess.run(
-                cmd, capture_output=True, text=True, encoding="utf-8", timeout=60,
+                cmd, capture_output=True, text=True, encoding="utf-8", timeout=180,
             )
             if r.returncode == 0:
                 log.info("%s succeeded", script.name)

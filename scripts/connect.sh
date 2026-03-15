@@ -1,5 +1,5 @@
 #!/bin/bash
-# connect.sh — pair and connect registered devices to this Mac
+# connect.sh — connect registered devices to this Mac
 # Usage: bash scripts/connect.sh <blueutil> <addr1> <name1> <addr2> <name2> ...
 
 set -uo pipefail
@@ -42,10 +42,6 @@ is_connected() {
   "$BLUEUTIL" --is-connected "$1" 2>/dev/null | grep -q "1"
 }
 
-is_paired() {
-  "$BLUEUTIL" --is-paired "$1" 2>/dev/null | grep -q "1"
-}
-
 run_with_timeout() {
   local secs="$1"; shift
   "$@" &
@@ -66,34 +62,25 @@ connect_device() {
     return 1
   fi
 
-  # Skip if already connected
   if is_connected "$addr"; then
     log "$name is already connected — skipping."
     return 0
   fi
 
-  # Pair first if needed (device may have been unpaired by the other Mac)
-  if ! is_paired "$addr"; then
-    log "Pairing $name ($addr)..."
-    run_with_timeout 15 "$BLUEUTIL" --pair "$addr" 2>/dev/null
-    sleep 1
-    if is_paired "$addr"; then
-      log "$name paired."
-    else
-      warn "$name pairing may have failed — will still try to connect."
-    fi
-  fi
-
   log "Connecting $name ($addr)..."
-  local max_attempts=6
+  local max_attempts=8
   for i in $(seq 1 $max_attempts); do
-    run_with_timeout 10 "$BLUEUTIL" --connect "$addr" 2>/dev/null
+    # 8s timeout per attempt — short enough to retry fast
+    run_with_timeout 8 "$BLUEUTIL" --connect "$addr" 2>/dev/null
     sleep 1
     if is_connected "$addr"; then
       log "$name connected."
       return 0
     fi
-    warn "  attempt $i/$max_attempts failed, retrying in 1s..."
+    # Only log every other attempt to reduce noise
+    if (( i % 2 == 0 )); then
+      warn "  $name not connected yet, retrying ($i/$max_attempts)..."
+    fi
     sleep 1
   done
   err "Could not connect $name after $max_attempts attempts."
