@@ -1,5 +1,5 @@
 #!/bin/bash
-# disconnect.sh — disconnect registered devices so the other Mac can connect them
+# disconnect.sh — disconnect and unpair devices so the other Mac can connect them
 # Usage: bash scripts/disconnect.sh <blueutil> <addr1> <name1> <addr2> <name2> ...
 
 set -uo pipefail
@@ -42,7 +42,6 @@ is_connected() {
   "$BLUEUTIL" --is-connected "$1" 2>/dev/null | grep -q "1"
 }
 
-# Run a command with a timeout (macOS doesn't have GNU timeout)
 run_with_timeout() {
   local secs="$1"; shift
   "$@" &
@@ -68,18 +67,22 @@ for i in "${!ADDRS[@]}"; do
     continue
   fi
 
-  # Skip if already disconnected
+  # Skip if already disconnected and unpaired
   if ! is_connected "$addr"; then
     log "$name is already disconnected — skipping."
+    # Still unpair to make sure device doesn't auto-reconnect
+    run_with_timeout 5 "$BLUEUTIL" --unpair "$addr" 2>/dev/null
     continue
   fi
 
   log "Disconnecting $name ($addr)..."
-  if run_with_timeout 10 "$BLUEUTIL" --disconnect "$addr" 2>/dev/null; then
-    log "$name disconnected."
-  else
-    warn "$name disconnect may have timed out — continuing."
-  fi
+  run_with_timeout 10 "$BLUEUTIL" --disconnect "$addr" 2>/dev/null
+  sleep 1
+
+  # Unpair (forget) so the device stops auto-reconnecting to this Mac
+  log "Unpairing $name so the other Mac can connect..."
+  run_with_timeout 5 "$BLUEUTIL" --unpair "$addr" 2>/dev/null
+  log "$name disconnected and unpaired."
 done
 
 if (( failed > 0 )); then
@@ -87,4 +90,4 @@ if (( failed > 0 )); then
   exit 1
 fi
 
-log "Done. All devices disconnected."
+log "Done. All devices disconnected and unpaired."

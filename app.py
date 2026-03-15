@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import threading
+import urllib.request
 from pathlib import Path
 
 import rumps
@@ -49,8 +50,9 @@ def _resolve_icon() -> str:
 
 ICON_PATH = _resolve_icon()
 
-VERSION = "1.0.0"
-MAC_RE  = re.compile(r"^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$")
+VERSION    = "1.0.0"
+GITHUB_REPO = "rangeshot/macblue"
+MAC_RE      = re.compile(r"^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$")
 
 logging.basicConfig(
     filename=str(LOG_PATH), level=logging.INFO,
@@ -146,6 +148,34 @@ def get_paired_devices() -> list[dict]:
         raise RuntimeError("blueutil returned invalid output.\nTry: brew upgrade blueutil")
 
 
+# ── Update Checker ────────────────────────────────────────────────────────────
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    """Parse '1.2.3' or 'v1.2.3' into (1, 2, 3)."""
+    return tuple(int(x) for x in v.lstrip("v").split(".") if x.isdigit())
+
+
+def check_for_update():
+    """Check GitHub for a newer release. Returns {"version": ..., "url": ...} or None."""
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        tag = data.get("tag_name", "")
+        remote = _parse_version(tag)
+        local  = _parse_version(VERSION)
+        if remote > local:
+            return {
+                "version": tag.lstrip("v"),
+                "url": data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases"),
+                "zipball": data.get("zipball_url", ""),
+            }
+    except Exception as e:
+        log.warning("Update check failed: %s", e)
+    return None
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 
 class MacBlueApp(rumps.App):
@@ -181,13 +211,14 @@ class MacBlueApp(rumps.App):
             self.disconnect_item,
             rumps.separator,
             self.register_item,
-            rumps.MenuItem("Logs…",       callback=self.on_logs, key="l"),
-            rumps.MenuItem("Help Center", callback=self.on_help),
+            rumps.MenuItem("Check for Updates…", callback=self.on_check_update, key="u"),
+            rumps.MenuItem("Logs…",              callback=self.on_logs, key="l"),
+            rumps.MenuItem("Help Center",        callback=self.on_help),
             rumps.separator,
             self.devices_header,
             # device items inserted dynamically below
             rumps.separator,
-            rumps.MenuItem("Quit",        callback=self.on_quit, key="q"),
+            rumps.MenuItem("Quit",               callback=self.on_quit, key="q"),
         ]
 
         self._refresh_device_menu()
@@ -410,6 +441,42 @@ class MacBlueApp(rumps.App):
 
         self._notify(msg)
         log.info("Action complete: success=%s msg=%s", success, msg)
+
+    # ── Updates ─────────────────────────────────────────────────────────────
+
+    def on_check_update(self, _):
+        """Check GitHub for a new release, offer to open the download page."""
+        self._pending_update = None
+        threading.Thread(target=self._fetch_update, daemon=True).start()
+        self._update_poll = rumps.Timer(self._show_update_result, 0.3)
+        self._update_poll.start()
+
+    def _fetch_update(self):
+        self._pending_update = ("done", check_for_update())
+
+    def _show_update_result(self, timer):
+        if self._pending_update is None:
+            return
+        timer.stop()
+        _, update = self._pending_update
+        self._pending_update = None
+
+        if update is None:
+            rumps.alert(
+                title="You're up to date!",
+                message=f"macblue v{VERSION} is the latest version.",
+            )
+            return
+
+        resp = rumps.alert(
+            title=f"Update available: v{update['version']}",
+            message=f"You have v{VERSION}.\n\n"
+                    f"Download v{update['version']} and run install.sh to update.",
+            ok="Download",
+            cancel="Later",
+        )
+        if resp == 1:  # clicked "Download"
+            subprocess.Popen(["open", update["url"]])
 
     # ── Misc ──────────────────────────────────────────────────────────────────
 
