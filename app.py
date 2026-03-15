@@ -50,7 +50,7 @@ def _resolve_icon() -> str:
 
 ICON_PATH = _resolve_icon()
 
-VERSION    = "1.0.0"
+VERSION    = "1.1.0"
 GITHUB_REPO = "rangeshot/macblue"
 MAC_RE      = re.compile(r"^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$")
 

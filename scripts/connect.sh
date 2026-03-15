@@ -1,5 +1,5 @@
 #!/bin/bash
-# connect.sh — connect registered devices to this Mac
+# connect.sh — forget stale state, pair fresh, and connect devices
 # Usage: bash scripts/connect.sh <blueutil> <addr1> <name1> <addr2> <name2> ...
 
 set -uo pipefail
@@ -42,6 +42,10 @@ is_connected() {
   "$BLUEUTIL" --is-connected "$1" 2>/dev/null | grep -q "1"
 }
 
+is_paired() {
+  "$BLUEUTIL" --is-paired "$1" 2>/dev/null | grep -q "1"
+}
+
 run_with_timeout() {
   local secs="$1"; shift
   "$@" &
@@ -62,28 +66,47 @@ connect_device() {
     return 1
   fi
 
-  if is_connected "$addr"; then
-    log "$name is already connected — skipping."
-    return 0
+  log "Claiming $name ($addr)..."
+
+  # Step 1: Forget any stale pairing (clean slate)
+  run_with_timeout 5 "$BLUEUTIL" --unpair "$addr" 2>/dev/null
+  sleep 1
+
+  # Step 2: Pair fresh
+  log "  Pairing $name..."
+  local pair_ok=false
+  for attempt in 1 2 3; do
+    run_with_timeout 10 "$BLUEUTIL" --pair "$addr" 2>/dev/null
+    sleep 1
+    if is_paired "$addr"; then
+      log "  $name paired."
+      pair_ok=true
+      break
+    fi
+    warn "  Pair attempt $attempt/3 failed, retrying..."
+  done
+
+  if [[ "$pair_ok" != "true" ]]; then
+    warn "  Could not pair $name — will still try to connect."
   fi
 
-  log "Connecting $name ($addr)..."
-  local max_attempts=8
+  # Step 3: Connect
+  log "  Connecting $name..."
+  local max_attempts=6
   for i in $(seq 1 $max_attempts); do
-    # 8s timeout per attempt — short enough to retry fast
     run_with_timeout 8 "$BLUEUTIL" --connect "$addr" 2>/dev/null
     sleep 1
     if is_connected "$addr"; then
       log "$name connected."
       return 0
     fi
-    # Only log every other attempt to reduce noise
     if (( i % 2 == 0 )); then
-      warn "  $name not connected yet, retrying ($i/$max_attempts)..."
+      warn "  Connect attempt $i/$max_attempts failed, retrying..."
     fi
     sleep 1
   done
-  err "Could not connect $name after $max_attempts attempts."
+
+  err "Could not connect $name after all attempts."
   return 1
 }
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# disconnect.sh — disconnect devices so the other Mac can connect them
+# disconnect.sh — disconnect and forget devices so the other Mac can claim them
 # Usage: bash scripts/disconnect.sh <blueutil> <addr1> <name1> <addr2> <name2> ...
 
 set -uo pipefail
@@ -38,10 +38,6 @@ fi
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-is_connected() {
-  "$BLUEUTIL" --is-connected "$1" 2>/dev/null | grep -q "1"
-}
-
 run_with_timeout() {
   local secs="$1"; shift
   "$@" &
@@ -67,26 +63,16 @@ for i in "${!ADDRS[@]}"; do
     continue
   fi
 
-  if ! is_connected "$addr"; then
-    log "$name is already disconnected — skipping."
-    continue
-  fi
+  log "Releasing $name ($addr)..."
 
-  log "Disconnecting $name ($addr)..."
-  # Disconnect repeatedly — devices try to auto-reconnect
-  for attempt in 1 2 3; do
-    run_with_timeout 10 "$BLUEUTIL" --disconnect "$addr" 2>/dev/null
-    sleep 1
-    if ! is_connected "$addr"; then
-      log "$name disconnected."
-      break
-    fi
-    warn "  $name reconnected, pushing away again ($attempt/3)..."
-  done
+  # Step 1: Disconnect
+  run_with_timeout 10 "$BLUEUTIL" --disconnect "$addr" 2>/dev/null
+  sleep 1
 
-  if is_connected "$addr"; then
-    warn "$name still connected — the other Mac may need a retry."
-  fi
+  # Step 2: Forget (unpair) — device stops auto-reconnecting to this Mac
+  run_with_timeout 5 "$BLUEUTIL" --unpair "$addr" 2>/dev/null
+
+  log "$name disconnected and forgotten."
 done
 
 if (( failed > 0 )); then
@@ -94,4 +80,4 @@ if (( failed > 0 )); then
   exit 1
 fi
 
-log "Done. All devices disconnected."
+log "Done. All devices released."
