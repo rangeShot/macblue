@@ -420,7 +420,7 @@ class MacBlueApp(rumps.App):
         subprocess.Popen(["open", "-a", "Console", str(LOG_PATH)])
 
     def on_help(self, _):
-        subprocess.Popen(["open", "https://github.com/ranchohimself/macblue"])
+        subprocess.Popen(["open", "https://github.com/rangeshot/macblue"])
 
     def on_quit(self, _):
         if self._busy:
