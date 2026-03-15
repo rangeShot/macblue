@@ -13,24 +13,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Get version from setup.py
         id: version
         run: |
-          VERSION=$(python3 -c "
-          import re, sys
-          text = open('setup.py').read()
-          m = re.search(r'VERSION\s*=\s*[\"'']([^\"'']+)[\"'']', text)
-          print(m.group(1) if m else '')
-          ")
+          VERSION=$(grep -oP 'VERSION\s*=\s*"\K[^"]+' setup.py)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check if tag already exists
+      - name: Check if release exists
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -44,7 +41,6 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v$VERSION"
 
-          # Generate changelog from commits since last tag
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$LAST_TAG" ]; then
             CHANGES=$(git log "$LAST_TAG"..HEAD --pretty=format:"- %s" --no-merges)
@@ -52,7 +48,8 @@ jobs:
             CHANGES=$(git log --pretty=format:"- %s" --no-merges -20)
           fi
 
-          BODY="## What's new in v${VERSION}
+          cat > /tmp/release_notes.md <<EOF
+          ## What's new in v${VERSION}
 
           ${CHANGES}
 
@@ -65,9 +62,13 @@ jobs:
 
           # Or update existing
           cd /path/to/macblue && git pull && bash install.sh
-          \`\`\`"
+          \`\`\`
+          EOF
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' /tmp/release_notes.md
 
           gh release create "$TAG" \
             --title "macblue v${VERSION}" \
-            --notes "$BODY" \
+            --notes-file /tmp/release_notes.md \
             --target main
