@@ -4,7 +4,7 @@ Usage: python3 setup.py py2app
 """
 from setuptools import setup
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 APP = ["app.py"]
 
